@@ -1,0 +1,5 @@
+[
+  { "topic": "我的第一份 SDD 報告", "tags": ["demo","sdd"] },
+  { "topic": "中文標題驗證",       "tags": ["check"] },
+  { "topic": "研究流程自動化",       "tags": ["automation"] }
+]

@@ -1,16 +1,22 @@
+import json, os
+from datetime import datetime
 from backend.app import create_report, rebuild_archive
 from backend.models import ReportRequest
-from datetime import datetime
 
-# 今日要產生的主題（先用示範，之後可換成你自己的清單/資料來源）
-TOPICS = [
-    ("我的第一份 SDD 報告", ["demo", "sdd"]),
-    ("中文標題驗證", ["check"]),
-    ("研究流程自動化", ["automation"])
-]
+CONFIG = os.getenv("TOPICS_JSON", "config/topics.json")
+
+def load_topics(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            items = json.load(f)
+            assert isinstance(items, list)
+            return [(it["topic"], it.get("tags", [])) for it in items]
+    except Exception:
+        # fallback：避免排程失敗
+        return [("每日報告", ["fallback"])]
 
 def main():
-    for topic, tags in TOPICS:
+    for topic, tags in load_topics(CONFIG):
         req = ReportRequest(
             topic=topic,
             tags=tags,
@@ -19,7 +25,7 @@ def main():
                 "subtitle": f"自動產生於 {datetime.utcnow().strftime('%Y-%m-%d')}",
                 "sections": [
                     {"heading": "目標", "body": "每天自動產出報告並更新索引。"},
-                    {"heading": "狀態", "body": "本地腳本驗證成功後，改由 GitHub Actions 排程。"}
+                    {"heading": "狀態", "body": "Actions 排程執行。"}
                 ]
             }
         )
