@@ -1,0 +1,22 @@
+scheduler:
+  daily_time: "09:00"
+  timezone: "Asia/Taipei"
+  batch:
+    topics_source: "firestore:daily_topics"
+    parallelism: 3
+retries:
+  transient:
+    attempts: 3
+    backoff: "exponential: 2s..30s"
+alerts:
+  channels: ["Teams","Email"]
+  rules:
+    - name: "daily-fail-rate"
+      condition: "gen_failure / (gen_success + gen_failure) > 0.05 in 1d"
+      action: "notify"
+rbac:
+  call_reports: ["scheduler-sa","engineer-sa"]
+  read_archive: ["public-cdn"]
+slo:
+  rps: 1
+  p95_latency_ms: 30000

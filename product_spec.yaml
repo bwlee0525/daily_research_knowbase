@@ -1,0 +1,26 @@
+product:
+  name: Research Pipeline
+  goal: "一鍵產出研究報告並自動建索引與打包"
+  actors: ["researcher", "scheduler"]
+  user_stories:
+    - id: RP-001
+      as: researcher
+      want: "在指揮中心輸入主題後，30 秒內可開啟可讀的報告"
+      accept:
+        - "HTTP 200 回傳 view_url"
+        - "產出 HTML 與 meta.json 可被索引頁讀到"
+    - id: RP-002
+      as: scheduler
+      want: "每日 09:00 自動為指定清單生成報告並更新索引"
+      accept:
+        - "每日產出成功率 ≥99%"
+        - "失敗重試 3 次仍失敗需發出告警"
+  non_functional_requirements:
+    performance: { p95_latency_ms: 30000 }
+    reliability: { daily_success_rate: 0.99 }
+    security: { auth: 'Scheduler OIDC + private Cloud Run', secrets: 'GCP Secret Manager' }
+    observability: { logging: 'JSON 結構化', metrics: ['gen_duration_s','gen_success','gen_failure'] }
+    portability: { dev_env: 'VS Code Dev Container' }
+scope:
+  in: ["報告生成","索引重建","ZIP 打包","雲端靜態託管"]
+  out: ["內容寫作品質審核","多人協作權限管理（後續）"]

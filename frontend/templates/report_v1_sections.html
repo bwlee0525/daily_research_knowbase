@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial; margin: 2rem; line-height: 1.6; }
+    .tag { display: inline-block; padding: 0.1rem 0.5rem; border: 1px solid #999; border-radius: 0.5rem; margin-right: 0.3rem; font-size: 0.85rem; }
+    .muted { opacity: .7; }
+    h1 { margin: 0 0 .5rem 0; }
+    h2 { margin-top: .25rem; color: #444; }
+    h3 { margin: 1.25rem 0 .25rem 0; }
+    section { padding-bottom: .5rem; border-bottom: 1px dotted #ddd; }
+  </style>
+</head>
+<body>
+  <div class="muted">Generated: {{ created_at }}</div>
+  <h1>{{ title }}</h1>
+  {% if subtitle %}<h2>{{ subtitle }}</h2>{% endif %}
+  {% if tags and tags|length %}
+    <div style="margin:.5rem 0 1rem 0">
+      {% for t in tags %}<span class="tag">{{ t }}</span>{% endfor %}
+    </div>
+  {% endif %}
+  {% if sections %}
+    <div class="sections">
+      {% for s in sections %}
+        <section>
+          {% if s.heading %}<h3>{{ s.heading }}</h3>{% endif %}
+          {% if s.body %}<div>{{ s.body }}</div>{% endif %}
+        </section>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">（尚未提供 sections，這是一個示範模板）</p>
+  {% endif %}
+</body>
+</html>

@@ -1,0 +1,43 @@
+openapi: 3.0.3
+info: { title: Research Pipeline API, version: "1.1.0" }
+paths:
+  /reports:
+    post:
+      summary: Create report by topic
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic:    { type: string, minLength: 3 }
+                tags:     { type: array, items: { type: string } }
+                template: { type: string, enum: ["report_v1", "report_v1_sections"], default: "report_v1_sections" }
+                data:
+                  type: object
+                  properties:
+                    subtitle: { type: string }
+                    sections:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          heading: { type: string }
+                          body:    { type: string }
+      responses:
+        "200":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report_id: { type: string }
+                  view: { type: string }
+        "422": { description: invalid spec }
+  /rebuild-archive:
+    post:
+      summary: Rebuild index.html from all meta.json
+      responses: { "200": { description: rebuilt } }

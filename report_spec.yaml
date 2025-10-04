@@ -1,0 +1,24 @@
+template:
+  id: report_v1_sections
+  engine: jinja2
+  variables:
+    title:      { type: string, required: true }
+    subtitle:   { type: string, required: false }
+    created_at: { type: date,   required: true,  format: "%Y-%m-%d" }
+    tags:       { type: array,  items: string,   default: [] }
+    sections:
+      type: array
+      items:
+        type: object
+        properties:
+          heading: { type: string }
+          body:    { type: string }
+  static_assets: { base_path: "./assets" }
+  validation: { title_max_len: 80 }
+output:
+  structure:
+    - "reports/{report_id}/index.html"
+    - "reports/{report_id}/meta.json"
+    - "reports/{report_id}/bundle.zip"
+idempotency:
+  key: "{slug(title)}-{yyyyMMdd}"
