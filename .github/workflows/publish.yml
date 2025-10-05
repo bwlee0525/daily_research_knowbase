@@ -1,7 +1,12 @@
 name: Publish (09:00 TPE) — Build → push gh-pages
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+  inputs:
+    force:
+      description: 'Force run (ignore 09:00 TPE gate)'
+      required: false
+      default: 'false'
   schedule: [ { cron: "0 * * * *" } ]   # 每小時喚醒；只在 09 點真正執行
   push: { branches: [ main ] }
 
@@ -13,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Gate to 09:00 TPE
+        if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true') }}
         run: export TZ=Asia/Taipei; [ "$(date +%H)" = "09" ] || { echo "skip"; exit 0; }
 
       - uses: actions/checkout@v4
