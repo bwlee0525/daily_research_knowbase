@@ -15,10 +15,13 @@ on:
 
 permissions:
   contents: write   # need to push gh-pages
+  issues: write     # smoke 失敗時開 Issue
 
 jobs:
   build_and_publish:
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.page.outputs.url }}
     steps:
       - name: Gate to 09:00 TPE (or force)
         run: |
@@ -43,10 +46,114 @@ jobs:
       - name: Install deps
         run: pip install -r backend/requirements.txt
 
-      - name: Build site to ./out
+      # 解析今天的 Suggest Issue 與 /pick（無則 fallback -> 1,2）
+      - name: Resolve today's picks from Suggest issue
+        id: picks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            function tpeDate() { return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}); }
+            const today = tpeDate();
+            const title = `[Suggest] ${today} 今日 10 題`;
+
+            async function findIssue() {
+              // 先找標籤；找不到再用標題搜尋開啟中的
+              try {
+                const byLabel = await github.rest.issues.listForRepo({
+                  owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'daily-suggest', per_page: 100
+                });
+                const hit = byLabel.data.find(x => x.title === title);
+                if (hit) return hit;
+              } catch {}
+              const open = await github.rest.issues.listForRepo({
+                owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100
+              });
+              return open.data.find(x => x.title === title) || null;
+            }
+
+            function extractPayload(body) {
+              if (!body) return null;
+              const m = body.match(/```json\s*([\s\S]*?)```/i) || body.match(/\{[\s\S]*\}/);
+              if (!m) return null;
+              try { return JSON.parse(m[1] || m[0]); } catch { return null; }
+            }
+
+            function fallbackPayload() {
+              // 預設 10 題
+              return { date: today, items: Array.from({length:10},(_,i)=>({no:i+1,title:`今日研究題目 ${i+1}`,tags:["research"]})) };
+            }
+
+            async function readPicks(issue) {
+              if (!issue) return [1,2];
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number, per_page: 100
+              });
+              const picks = comments
+                .map(c => c.body || "")
+                .filter(t => /\/pick\s+/i.test(t))
+                .map(t => (t.match(/\d+/g)||[]).map(n=>parseInt(n,10)))
+                .flat()
+                .filter(n => Number.isInteger(n) && n>=1 && n<=10);
+              const dedup = [...new Set(picks)];
+              return dedup.length ? dedup.slice(0,2) : [1,2];
+            }
+
+            const issue = await findIssue();
+            let payload = extractPayload(issue?.body) || null;
+
+            // 嘗試從 repo 的 config/topics.json 讀（若存在）
+            if (!payload) {
+              try {
+                const fs = require('fs'); const path = require('path');
+                const fpath = path.join(process.env.GITHUB_WORKSPACE,'config','topics.json');
+                if (fs.existsSync(fpath)) {
+                  const arr = JSON.parse(fs.readFileSync(fpath,'utf8'));
+                  const items = Array.isArray(arr) ? arr.slice(0,10).map((t,i)=>({no:i+1,title:String(t.title||t||`題目 ${i+1}`),tags:Array.isArray(t.tags)?t.tags:[]})) : [];
+                  if (items.length) payload = { date: today, items };
+                }
+              } catch {}
+            }
+            if (!payload) payload = fallbackPayload();
+
+            const chosenNos = await readPicks(issue);
+            const choose = (n) => payload.items.find(it => (it.no||0)===n) || {no:n,title:`今日研究題目 ${n}`,tags:["research"]};
+            const t1 = choose(chosenNos[0]), t2 = choose(chosenNos[1] ?? chosenNos[0]+1);
+
+            core.setOutput('topic1', t1.title);
+            core.setOutput('tags1', JSON.stringify(t1.tags||[]));
+            core.setOutput('topic2', t2.title);
+            core.setOutput('tags2', JSON.stringify(t2.tags||[]));
+            core.setOutput('date', today);
+
+      - name: Build site with picked topics
         env:
           LOCAL_OUT: out
-        run: python -m scripts.daily
+          TOPIC1: ${{ steps.picks.outputs.topic1 }}
+          TAGS1: ${{ steps.picks.outputs.tags1 }}
+          TOPIC2: ${{ steps.picks.outputs.topic2 }}
+          TAGS2: ${{ steps.picks.outputs.tags2 }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from backend.app import create_report, rebuild_archive
+          from backend.models import ReportRequest as RR
+
+          picks = [
+              (os.environ['TOPIC1'], json.loads(os.environ['TAGS1'] or "[]")),
+              (os.environ['TOPIC2'], json.loads(os.environ['TAGS2'] or "[]")),
+          ]
+          for title, tags in picks:
+              req = RR(topic=title, tags=tags)
+              print(create_report(req))
+          print(rebuild_archive())
+          PY
+
+      - name: Compute Page URL
+        id: page
+        run: |
+          OWNER=$(echo "${GITHUB_REPOSITORY}" | cut -d/ -f1)
+          REPO=$(echo "${GITHUB_REPOSITORY}" | cut -d/ -f2)
+          echo "url=https://${OWNER}.github.io/${REPO}/" >> $GITHUB_OUTPUT
 
       - name: Deploy to gh-pages (branch-based Pages)
         uses: peaceiris/actions-gh-pages@v4
@@ -56,3 +163,34 @@ jobs:
           publish_branch: gh-pages
           force_orphan: true
           commit_message: "publish: ${{ github.sha }}"
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: build_and_publish
+    steps:
+      - name: Wait for Pages to settle
+        run: sleep 15
+      - name: Verify homepage has today's TPE date
+        run: |
+          set -e
+          export TZ=Asia/Taipei
+          TODAY=$(date +%F)
+          URL="${{ needs.build_and_publish.outputs.page_url }}"
+          echo "Check $URL for $TODAY"
+          for i in 1 2 3 4 5; do
+            curl -fsSL "$URL" | grep -F "$TODAY" && exit 0 || true
+            sleep 15
+          done
+          echo "Smoke failed for $URL ($TODAY)"; exit 1
+      - name: Open Issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = `${{ toJSON(needs.build_and_publish.outputs.page_url) }}`.replace(/^"|"$/g,'');
+            const today = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: `[smoke] Pages validation failed ${today}`,
+              body: `Smoke check failed for ${url} on ${today}.`
+            });
