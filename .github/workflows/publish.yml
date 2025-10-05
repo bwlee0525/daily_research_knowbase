@@ -2,13 +2,15 @@ name: Publish (09:00 TPE) — Build → push gh-pages
 
 on:
   workflow_dispatch:
-  inputs:
-    force:
-      description: 'Force run (ignore 09:00 TPE gate)'
-      required: false
-      default: 'false'
-  schedule: [ { cron: "0 * * * *" } ]   # 每小時喚醒；只在 09 點真正執行
-  push: { branches: [ main ] }
+    inputs:
+      force:
+        description: 'Force run (ignore 09:00 TPE gate)'
+        required: false
+        default: 'false'
+  schedule:
+    - cron: "0 * * * *"   # 每小時喚醒
+  push:
+    branches: [ main ]
 
 permissions:
   contents: write    # 需要寫入 gh-pages 分支
@@ -17,27 +19,47 @@ jobs:
   build_and_publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate to 09:00 TPE
-        if: ${{ !(github.event_name == 'workflow_dispatch' && github.event.inputs.force == 'true') }}
-        run: export TZ=Asia/Taipei; [ "$(date +%H)" = "09" ] || { echo "skip"; exit 0; }
+      - name: Decide run gate (TPE 09 or force)
+        id: gate
+        run: |
+          export TZ=Asia/Taipei
+          H=$(date +%H)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "RUN=true" >> $GITHUB_ENV
+          elif [ "$H" = "09" ]; then
+            echo "RUN=true" >> $GITHUB_ENV
+          else
+            echo "RUN=false" >> $GITHUB_ENV
+          fi
 
       - uses: actions/checkout@v4
+        if: env.RUN == 'true'
 
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: "pip" }
+        if: env.RUN == 'true'
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-      - run: pip install -r backend/requirements.txt
+      - name: Install deps
+        if: env.RUN == 'true'
+        run: pip install -r backend/requirements.txt
 
       - name: Build site to ./out
+        if: env.RUN == 'true'
         env: { LOCAL_OUT: out }
         run: python -m scripts.daily
 
-      # 分支式 Pages：把 out/ 發佈到 gh-pages 分支根目錄
       - name: Deploy to gh-pages (branch-based Pages)
+        if: env.RUN == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: out
           publish_branch: gh-pages
-          force_orphan: true    # 清爽歷史；首次沒有分支也會自動建立
+          force_orphan: true
           commit_message: "publish: ${{ github.sha }}"
+
+      - name: Skip note
+        if: env.RUN != 'true'
+        run: echo "Skipped: not 09:00 TPE and no force=true"
