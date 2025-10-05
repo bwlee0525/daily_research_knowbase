@@ -1,4 +1,4 @@
-name: Publish (09:00 TPE) — Build → push gh-pages
+name: Publish (TPE 09:00) - Build and push gh-pages
 
 on:
   workflow_dispatch:
@@ -8,50 +8,47 @@ on:
         required: false
         default: 'false'
   schedule:
-    - cron: "0 * * * *"   # 每小時喚醒
+    - cron: '0 * * * *'   # hourly wake
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 permissions:
-  contents: write    # 需要寫入 gh-pages 分支
+  contents: write   # need to push gh-pages
 
 jobs:
   build_and_publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Decide run gate (TPE 09 or force)
-        id: gate
+      - name: Gate to 09:00 TPE (or force)
         run: |
           export TZ=Asia/Taipei
           H=$(date +%H)
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force }}" = "true" ]; then
-            echo "RUN=true" >> $GITHUB_ENV
+            echo "Force run -> continue"
           elif [ "$H" = "09" ]; then
-            echo "RUN=true" >> $GITHUB_ENV
+            echo "09:00 TPE -> continue"
           else
-            echo "RUN=false" >> $GITHUB_ENV
+            echo "Skip: not 09:00 TPE and no force=true"
+            exit 0
           fi
 
       - uses: actions/checkout@v4
-        if: env.RUN == 'true'
 
       - uses: actions/setup-python@v5
-        if: env.RUN == 'true'
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.11'
+          cache: 'pip'
 
       - name: Install deps
-        if: env.RUN == 'true'
         run: pip install -r backend/requirements.txt
 
       - name: Build site to ./out
-        if: env.RUN == 'true'
-        env: { LOCAL_OUT: out }
+        env:
+          LOCAL_OUT: out
         run: python -m scripts.daily
 
       - name: Deploy to gh-pages (branch-based Pages)
-        if: env.RUN == 'true'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -59,7 +56,3 @@ jobs:
           publish_branch: gh-pages
           force_orphan: true
           commit_message: "publish: ${{ github.sha }}"
-
-      - name: Skip note
-        if: env.RUN != 'true'
-        run: echo "Skipped: not 09:00 TPE and no force=true"
