@@ -1,45 +1,33 @@
-name: Build & Publish Archive (Daily 09:00 Taipei)
-
+name: Publish (09:00 TPE) — Build & Deploy
 on:
   workflow_dispatch: {}
-  schedule:
-    # GitHub Actions 使用 UTC；09:00 台北 = 01:00 UTC
-    - cron: "0 1 * * *"
-
+  schedule: [ { cron: "0 * * * *" } ]
+  push: { branches: [ main ] }
 permissions:
   contents: read
   pages: write
   id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
+  issues: write
+concurrency: { group: "pages", cancel-in-progress: false }
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Gate to 09:00 TPE
+        run: export TZ=Asia/Taipei; [ "$(date +%H)" = "09" ] || { echo "skip"; exit 0; }
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
+        with: { python-version: "3.11", cache: "pip" }
       - run: pip install -r backend/requirements.txt
-      - name: Generate daily reports to ./out
-        env:
-          LOCAL_OUT: out
+      - name: Build site (fallback topics.json)
+        env: { LOCAL_OUT: out }
         run: python -m scripts.daily
-      - name: Upload static site artifact (./out)
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: out
-
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: out }
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
