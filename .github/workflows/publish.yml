@@ -1,47 +1,37 @@
-name: Publish (09:00 TPE) — Build & Deploy
+name: Publish (09:00 TPE) — Build → push gh-pages
 
 on:
   workflow_dispatch: {}
-  schedule: [ { cron: "0 * * * *" } ]   # 每小時喚醒；09 點才會真的執行
+  schedule: [ { cron: "0 * * * *" } ]   # 每小時喚醒；只在 09 點真正執行
   push: { branches: [ main ] }
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency: { group: "pages", cancel-in-progress: false }
+  contents: write    # 需要寫入 gh-pages 分支
 
 jobs:
-  build:
+  build_and_publish:
     runs-on: ubuntu-latest
     steps:
       - name: Gate to 09:00 TPE
         run: export TZ=Asia/Taipei; [ "$(date +%H)" = "09" ] || { echo "skip"; exit 0; }
 
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with: { python-version: "3.11", cache: "pip" }
+
       - run: pip install -r backend/requirements.txt
 
-      # 用現有腳本把站台產到 ./out
-      - name: Build site (fallback topics.json)
+      - name: Build site to ./out
         env: { LOCAL_OUT: out }
         run: python -m scripts.daily
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload static site artifact (./out)
-        uses: actions/upload-pages-artifact@v3
-        with: { path: out }
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages                # ← 關鍵：補上 environment
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # 分支式 Pages：把 out/ 發佈到 gh-pages 分支根目錄
+      - name: Deploy to gh-pages (branch-based Pages)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: out
+          publish_branch: gh-pages
+          force_orphan: true    # 清爽歷史；首次沒有分支也會自動建立
+          commit_message: "publish: ${{ github.sha }}"
