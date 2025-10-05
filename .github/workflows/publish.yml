@@ -14,8 +14,8 @@ on:
       - main
 
 permissions:
-  contents: write   # need to push gh-pages
-  issues: write     # smoke 失敗時開 Issue
+  contents: write
+  issues: write
 
 jobs:
   build_and_publish:
@@ -46,7 +46,7 @@ jobs:
       - name: Install deps
         run: pip install -r backend/requirements.txt
 
-      # 解析今天的 Suggest Issue 與 /pick（無則 fallback -> 1,2）
+      # 讀取今日 Suggest Issue 與 /pick（無則回退 1,2）
       - name: Resolve today's picks from Suggest issue
         id: picks
         uses: actions/github-script@v7
@@ -57,7 +57,6 @@ jobs:
             const title = `[Suggest] ${today} 今日 10 題`;
 
             async function findIssue() {
-              // 先找標籤；找不到再用標題搜尋開啟中的
               try {
                 const byLabel = await github.rest.issues.listForRepo({
                   owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'daily-suggest', per_page: 100
@@ -79,7 +78,6 @@ jobs:
             }
 
             function fallbackPayload() {
-              // 預設 10 題
               return { date: today, items: Array.from({length:10},(_,i)=>({no:i+1,title:`今日研究題目 ${i+1}`,tags:["research"]})) };
             }
 
@@ -101,7 +99,7 @@ jobs:
             const issue = await findIssue();
             let payload = extractPayload(issue?.body) || null;
 
-            // 嘗試從 repo 的 config/topics.json 讀（若存在）
+            // 也允許從 repo 的 config/topics.json 回退讀題
             if (!payload) {
               try {
                 const fs = require('fs'); const path = require('path');
@@ -125,7 +123,22 @@ jobs:
             core.setOutput('tags2', JSON.stringify(t2.tags||[]));
             core.setOutput('date', today);
 
-      - name: Build site with picked topics
+      # ✦ 新增：把 gh-pages 的既有網站抓回來，先灌進 out/（保留歷史）
+      - name: Checkout previous site (gh-pages)
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: _prev
+
+      - name: Seed out/ with previous site
+        run: |
+          mkdir -p out
+          if [ -d "_prev" ]; then
+            rsync -a --exclude '.git' --exclude 'index.html' _prev/ out/
+          fi
+
+      - name: Build site with picked topics (append, then rebuild index)
         env:
           LOCAL_OUT: out
           TOPIC1: ${{ steps.picks.outputs.topic1 }}
@@ -137,14 +150,12 @@ jobs:
           import json, os
           from backend.app import create_report, rebuild_archive
           from backend.models import ReportRequest as RR
-
           picks = [
               (os.environ['TOPIC1'], json.loads(os.environ['TAGS1'] or "[]")),
               (os.environ['TOPIC2'], json.loads(os.environ['TAGS2'] or "[]")),
           ]
           for title, tags in picks:
-              req = RR(topic=title, tags=tags)
-              print(create_report(req))
+              print(create_report(RR(topic=title, tags=tags)))
           print(rebuild_archive())
           PY
 
@@ -162,7 +173,8 @@ jobs:
           publish_dir: out
           publish_branch: gh-pages
           force_orphan: true
-          commit_message: "publish: ${{ github.sha }}"
+          commit_message: "publish: ${ { github.sha } }"
+          # 註：force_orphan 會重建分支，但我們 out/ 已包含歷史，所以不會丟資料
 
   smoke:
     runs-on: ubuntu-latest
