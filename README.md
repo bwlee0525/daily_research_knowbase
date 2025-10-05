@@ -1,3 +1,5 @@
+📄 規格（SSOT）：[specs/SDD.md](specs/SDD.md)
+
 # Research Pipeline (SDD Starter)
 
 這是一個**初學者友善**的 SDD 範例專案：按「規格 → 設計 → 實作 → 驗證」交付。
