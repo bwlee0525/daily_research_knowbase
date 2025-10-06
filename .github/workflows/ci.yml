@@ -1,21 +1,36 @@
 name: CI
 on: [push, pull_request]
+
 jobs:
   test-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: pip install -r backend/requirements.txt
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install -r backend/requirements.txt
+
       - name: Render sample report (no GCS)
         env:
           LOCAL_OUT: out
         run: |
           python - <<'PY'
-from backend.app import create_report
-from backend.models import ReportRequest
-print(create_report(ReportRequest(topic="ci-sample", tags=["ci"])))
-PY
+          from backend.app import create_report
+          from backend.models import ReportRequest as RR
+          print(create_report(RR(topic="ci-sample", tags=["ci"])))
+          PY
+
       - name: Build container
         run: docker build -t research-pipeline:ci -f backend/Dockerfile .
+
+      - name: Upload out/ as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: out
+          path: out
