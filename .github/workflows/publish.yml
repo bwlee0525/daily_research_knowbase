@@ -1,192 +1,126 @@
-name: Publish (TPE 09:00) - Build and push gh-pages
+name: Publish (TPE 09:00) — Build & gh-pages
 
 on:
+  schedule:
+    # 09:00 Asia/Taipei = 01:00 UTC
+    - cron: '0 1 * * *'
   workflow_dispatch:
     inputs:
       force:
-        description: 'Force run (ignore 09:00 TPE gate)'
+        description: 'Run regardless of time gate'
         required: false
         default: 'false'
-  schedule:
-    - cron: '0 * * * *'
-  push:
-    branches: [ main ]
+        type: choice
+        options: ['false', 'true']
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
-  build_and_publish:
+  publish:
     runs-on: ubuntu-latest
-    outputs:
-      page_url: ${{ steps.page.outputs.url }}
+    env:
+      TZ: Asia/Taipei
+      RETAIN_DAYS: "30"   # 可調：保留最近 N 天
+      RETAIN_MAX:  "100"  # 可調：最多保留 N 篇
     steps:
-      - name: Decide run gate (TPE 09 or force)
-        run: |
-          export TZ=Asia/Taipei
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force }}" = "true" ]; then
-            echo "RUN=true" >> $GITHUB_ENV
-          elif [ "$(date +%H)" = "09" ]; then
-            echo "RUN=true" >> $GITHUB_ENV
-          else
-            echo "RUN=false" >> $GITHUB_ENV
-          fi
-
-      - uses: actions/checkout@v4
-        if: env.RUN == 'true'
-
-      - uses: actions/setup-python@v5
-        if: env.RUN == 'true'
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install deps
-        if: env.RUN == 'true'
-        run: pip install -r backend/requirements.txt
-
-      - name: Resolve today's picks from Suggest issue
-        if: env.RUN == 'true'
-        id: picks
-        uses: actions/github-script@v7
-        with:
-          script: |
-            function tpeDate(){ return new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'}); }
-            const today = tpeDate();
-            const title = `[Suggest] ${today} 今日 10 題`;
-            async function findIssue(){
-              try{
-                const byLabel = await github.rest.issues.listForRepo({owner:context.repo.owner,repo:context.repo.repo,state:'open',labels:'daily-suggest',per_page:100});
-                const hit = byLabel.data.find(x=>x.title===title);
-                if(hit) return hit;
-              }catch{}
-              const open = await github.rest.issues.listForRepo({owner:context.repo.owner,repo:context.repo.repo,state:'open',per_page:100});
-              return open.data.find(x=>x.title===title)||null;
-            }
-            function extractPayload(body){
-              if(!body) return null;
-              const m = body.match(/```json\s*([\s\S]*?)```/i) || body.match(/\{[\s\S]*\}/);
-              if(!m) return null;
-              try{ return JSON.parse(m[1]||m[0]); }catch{ return null; }
-            }
-            function fallbackPayload(){
-              return {date:today,items:Array.from({length:10},(_,i)=>({no:i+1,title:`今日研究題目 ${i+1}`,tags:["research"]}))};
-            }
-            async function readPicks(issue){
-              if(!issue) return [1,2];
-              const {data:comments}=await github.rest.issues.listComments({owner:context.repo.owner,repo:context.repo.repo,issue_number:issue.number,per_page:100});
-              const picks=comments.map(c=>c.body||"").filter(t=>/\/pick\s+/i.test(t))
-                 .map(t=>(t.match(/\d+/g)||[]).map(n=>parseInt(n,10))).flat()
-                 .filter(n=>Number.isInteger(n)&&n>=1&&n<=10);
-              const dedup=[...new Set(picks)];
-              return dedup.length?dedup.slice(0,2):[1,2];
-            }
-            const issue=await findIssue();
-            let payload=extractPayload(issue?.body)||null;
-            if(!payload){
-              try{
-                const fs=require('fs'),path=require('path');
-                const f=path.join(process.env.GITHUB_WORKSPACE,'config','topics.json');
-                if(fs.existsSync(f)){
-                  const arr=JSON.parse(fs.readFileSync(f,'utf8'));
-                  const items=Array.isArray(arr)?arr.slice(0,10).map((t,i)=>({no:i+1,title:String(t.title||t||`題目 ${i+1}`),tags:Array.isArray(t.tags)?t.tags:[]})):[];
-                  if(items.length) payload={date:today,items};
-                }
-              }catch{}
-            }
-            if(!payload) payload=fallbackPayload();
-            const chosenNos=await readPicks(issue);
-            const choose=n=>payload.items.find(it=>(it.no||0)===n)||{no:n,title:`今日研究題目 ${n}`,tags:["research"]};
-            const t1=choose(chosenNos[0]), t2=choose(chosenNos[1]??chosenNos[0]+1);
-            core.setOutput('topic1',t1.title);
-            core.setOutput('tags1',JSON.stringify(t1.tags||[]));
-            core.setOutput('topic2',t2.title);
-            core.setOutput('tags2',JSON.stringify(t2.tags||[]));
-            core.setOutput('date',today);
-
-      - name: Checkout previous site (gh-pages)
-        if: env.RUN == 'true'
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: gh-pages
-          path: _prev
-        continue-on-error: true
+          fetch-depth: 0
 
-      - name: Seed out/ with previous site
-        if: env.RUN == 'true'
+      - name: Gate by TPE time or force
+        id: gate
         run: |
-          mkdir -p out
-          if [ -d "_prev" ]; then
-            rsync -a --exclude '.git' --exclude 'index.html' _prev/ out/
+          HOUR=$(TZ=$TZ date +%H)
+          if [ "${{ github.event.inputs.force || 'false' }}" = "true" ]; then
+            echo "RUN=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "09" ]; then
+            echo "RUN=true" >> $GITHUB_OUTPUT
+          else
+            echo "RUN=false" >> $GITHUB_OUTPUT
+          fi
+          echo "NOW=$(TZ=$TZ date '+%F %T %Z')" >> $GITHUB_OUTPUT
+
+      - name: Setup Python
+        if: steps.gate.outputs.RUN == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Build site (scripts/daily.py → out/)
+        if: steps.gate.outputs.RUN == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f backend/requirements.txt ]; then
+            pip install -r backend/requirements.txt
+          fi
+          python -m scripts.daily
+
+      - name: Checkout gh-pages into ./_site_prev
+        if: steps.gate.outputs.RUN == 'true'
+        run: |
+          git fetch origin gh-pages || true
+          rm -rf _site_prev
+          mkdir -p _site_prev
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git --work-tree=_site_prev checkout origin/gh-pages -- .
+          else
+            echo "<html><body>init</body></html>" > _site_prev/index.html
+          fi
+          find _site_prev -name ".git*" -maxdepth 1 -delete || true
+
+      - name: Merge previous site into out/ (keep history)
+        if: steps.gate.outputs.RUN == 'true'
+        run: |
+          rsync -a --delete --exclude='.git' --exclude='index.html' _site_prev/ out/
+
+      - name: Apply retention policy
+        if: steps.gate.outputs.RUN == 'true'
+        run: |
+          args=""
+          [ -n "${RETAIN_DAYS}" ] && args="$args --days ${RETAIN_DAYS}"
+          [ -n "${RETAIN_MAX}" ] && args="$args --max ${RETAIN_MAX}"
+          if [ -n "$args" ]; then
+            python scripts/retention.py --root out $args
+          else
+            echo "No retention configured; skip."
           fi
 
-      - name: Build site with picked topics (append + rebuild index)
-        if: env.RUN == 'true'
+      - name: Commit and push to gh-pages
+        if: steps.gate.outputs.RUN == 'true'
+        run: |
+          # 準備暫存 worktree
+          rm -rf _ghp
+          git worktree add -B gh-pages _ghp origin/gh-pages || git worktree add -B gh-pages _ghp
+          rsync -a --delete --exclude='.git' out/ _ghp/
+          cd _ghp
+          git add -A
+          git commit -m "publish: $(TZ=$TZ date +%F) site update" || echo "no changes to commit"
+          git push origin gh-pages
+
+      - name: Smoke check (retry until live)
+        if: steps.gate.outputs.RUN == 'true'
         env:
-          LOCAL_OUT: out
-          TOPIC1: ${{ steps.picks.outputs.topic1 }}
-          TAGS1: ${{ steps.picks.outputs.tags1 }}
-          TOPIC2: ${{ steps.picks.outputs.topic2 }}
-          TAGS2: ${{ steps.picks.outputs.tags2 }}
+          OWNER_REPO: ${{ github.repository }}
         run: |
-          python - <<'PY'
-          import json, os
-          from backend.app import create_report, rebuild_archive
-          from backend.models import ReportRequest as RR
-          picks=[(os.environ['TOPIC1'], json.loads(os.environ['TAGS1'] or "[]")),
-                 (os.environ['TOPIC2'], json.loads(os.environ['TAGS2'] or "[]"))]
-          for title,tags in picks:
-              print(create_report(RR(topic=title, tags=tags)))
-          print(rebuild_archive())
-          PY
-
-      - name: Compute Page URL
-        if: env.RUN == 'true'
-        id: page
-        run: |
-          OWNER=${GITHUB_REPOSITORY%%/*}
-          REPO=${GITHUB_REPOSITORY##*/}
-          echo "url=https://${OWNER}.github.io/${REPO}/" >> $GITHUB_OUTPUT
-
-      - name: Deploy to gh-pages
-        if: env.RUN == 'true'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: out
-          publish_branch: gh-pages
-          force_orphan: true
-          commit_message: "publish: ${{ github.sha }}"
-
-  smoke:
-    runs-on: ubuntu-latest
-    needs: build_and_publish
-    if: needs.build_and_publish.outputs.page_url != '' && needs.build_and_publish.result == 'success'
-    steps:
-      - name: Wait for Pages to settle
-        run: sleep 15
-      - name: Verify homepage has today's TPE date
-        run: |
-          set -e
-          export TZ=Asia/Taipei
-          TODAY=$(date +%F)
-          URL="${{ needs.build_and_publish.outputs.page_url }}"
-          echo "Check $URL for $TODAY"
-          for i in 1 2 3 4 5; do
-            curl -fsSL "$URL" | grep -F "$TODAY" && exit 0 || true
-            sleep 15
+          OWNER=$(echo "$OWNER_REPO" | cut -d'/' -f1)
+          REPO=$(echo "$OWNER_REPO" | cut -d'/' -f2)
+          URL="https://${OWNER}.github.io/${REPO}/"
+          echo "Check URL: $URL"
+          ok=0
+          for i in $(seq 1 18); do
+            sleep 10
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+            echo "Try #$i code=$code"
+            if [ "$code" = "200" ]; then ok=1; break; fi
           done
-          echo "Smoke failed for $URL ($TODAY)"; exit 1
-      - name: Open Issue on failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const url = `${{ toJSON(needs.build_and_publish.outputs.page_url) }}`.replace(/^"|"$/g,'');
-            const today = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
-            await github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `[smoke] Pages validation failed ${today}`,
-              body: `Smoke check failed for ${url} on ${today}.`
-            });
+          if [ "$ok" != "1" ]; then
+            echo "Smoke failed for $URL"
+            exit 1
+          fi
+
+      - name: Skipped by gate
+        if: steps.gate.outputs.RUN != 'true'
+        run: |
+          echo "Gate says RUN=false @ ${{ steps.gate.outputs.NOW }}"

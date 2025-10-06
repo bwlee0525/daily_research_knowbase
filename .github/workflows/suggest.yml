@@ -1,50 +1,117 @@
 name: Suggest (TPE 08:30) — 10 topics
 
 on:
+  schedule:
+    # 08:30 Asia/Taipei = 00:30 UTC
+    - cron: '30 0 * * *'
   workflow_dispatch:
     inputs:
       force:
-        description: 'Force run (ignore 08:00 TPE gate)'
+        description: 'Run regardless of time gate'
         required: false
         default: 'false'
-  schedule:
-    - cron: '0 * * * *'   # hourly wake
+        type: choice
+        options: ['false', 'true']
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 jobs:
   suggest:
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Taipei
     steps:
-      - name: Decide run gate (TPE 08 or force)
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gate by TPE time or force
+        id: gate
         run: |
-          export TZ=Asia/Taipei
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force }}" = "true" ]; then
-            echo "RUN=true" >> $GITHUB_ENV
-          elif [ "$(date +%H)" = "08" ]; then
-            echo "RUN=true" >> $GITHUB_ENV
+          HOUR=$(TZ=$TZ date +%H)
+          MIN=$(TZ=$TZ date +%M)
+          if [ "${{ github.event.inputs.force || 'false' }}" = "true" ]; then
+            echo "RUN=true" >> $GITHUB_OUTPUT
+          elif [ "$HOUR" = "08" ] && [ "$MIN" -ge 25 ] && [ "$MIN" -le 40 ]; then
+            echo "RUN=true" >> $GITHUB_OUTPUT
           else
-            echo "RUN=false" >> $GITHUB_ENV
+            echo "RUN=false" >> $GITHUB_OUTPUT
+          fi
+          echo "NOW=$(TZ=$TZ date '+%F %T %Z')" >> $GITHUB_OUTPUT
+          echo "HOUR=$HOUR MIN=$MIN" >> $GITHUB_OUTPUT
+
+      - name: Setup Python
+        if: steps.gate.outputs.RUN == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install deps for Gemini (conditional)
+        if: steps.gate.outputs.RUN == 'true'
+        run: |
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            python -m pip install --upgrade pip
+            python -m pip install google-generativeai==0.8.3
+          else
+            echo "No GEMINI_API_KEY; will use fallback topics."
           fi
 
-      - uses: actions/checkout@v4
-        if: env.RUN == 'true'
+      - name: Generate topics (Gemini or fallback)
+        if: steps.gate.outputs.RUN == 'true'
+        id: gen_topics
+        run: |
+          export GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
+          python scripts/generate_topics.py > topics.json
+          echo "topics_json<<EOF" >> $GITHUB_OUTPUT
+          cat topics.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "today=$(TZ=Asia/Taipei date +%F)" >> $GITHUB_OUTPUT
 
-      - name: Generate 10 topics (fallback) & open/update issue
-        if: env.RUN == 'true'
+      - name: Create/Update daily issue
+        if: steps.gate.outputs.RUN == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            const today = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Taipei'});
+            const today = `${{ steps.gen_topics.outputs.today }}`;
             const title = `[Suggest] ${today} 今日 10 題`;
-            const items = Array.from({length:10},(_,i)=>({no:i+1,title:`今日研究題目 ${i+1}`,tags:["research"]}));
-            const body = "請留言 `/pick 2,7` 或 `/pick 2 7`\n\n```json\n"+JSON.stringify({date:today,items},null,2)+"\n```";
-            const { data: issues } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state:'open', per_page:100 });
-            const found = issues.find(x=>x.title===title);
-            if (found) {
-              await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo, issue_number: found.number, body, labels:['daily-suggest'] });
+            const topics = JSON.parse(`${{ steps.gen_topics.outputs.topics_json }}`);
+            const body = [
+              '## 今日題單 (JSON)',
+              '```json',
+              JSON.stringify(topics, null, 2),
+              '```',
+              '',
+              '在此留言 `/pick 2,7` 或 `/pick 3 5` 來選兩題。'
+            ].join('\n');
+
+            // 查找是否已有同名 Issue
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            const existing = issues.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body
+              });
+              core.info(`Updated existing issue #${existing.number}`);
             } else {
-              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels:['daily-suggest'] });
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+              core.info(`Created issue #${created.data.number}`);
             }
+
+      - name: Skipped by gate
+        if: steps.gate.outputs.RUN != 'true'
+        run: |
+          echo "Gate says RUN=false @ ${{ steps.gate.outputs.NOW }} (H=${{ steps.gate.outputs.HOUR }} M=${{ steps.gate.outputs.MIN }})"
