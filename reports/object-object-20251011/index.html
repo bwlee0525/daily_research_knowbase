@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[object Object]</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Neutrals -->
+    <!-- Application Structure Plan: 本應用程式採用主題式分區結構，旨在引導使用者循序漸進地理解認知失調理論。結構依序為：1. 介紹：提供核心定義，建立基礎認知。2. 互動模擬器：讓使用者透過實際操作，親身體驗失調與緩解過程，將抽象概念具象化。3. 經典實驗：展示理論的科學依據，並透過互動圖表呈現關鍵結果，強化可信度。4. 影響因素：深入探討影響失調強度的變因。5. 現實應用：連結理論與生活，展示其實用價值。6. 批判與發展：提供平衡的學術觀點，介紹理論的局限性與後續發展。此流程從理論到實踐，再到批判性思考，旨在最大化學習效果與使用者參與度。 -->
+    <!-- Visualization & Content Choices: 
+        - 核心概念 -> 資訊呈現 -> 互動式卡片 -> 點擊顯示詳細資訊 -> 強化使用者主動探索 -> HTML/JS/Tailwind。
+        - 失調緩解方法 -> 互動模擬 -> 互動式情境模擬器搭配「不適感儀表」 -> 使用者選擇情境與解決方案，觀察心態與不適感的視覺化變化 -> 將抽象的心理過程轉化為可視化的互動體驗 -> Vanilla JS。
+        - 經典實驗 ($1 vs. $20) -> 數據比較 -> Chart.js 長條圖 -> 視覺化比較不同組別的態度轉變程度 -> 清晰展示實驗結果 -> Chart.js/Canvas。
+        - 努力合理化 -> 關係展示 -> 互動式滑桿 -> 滑動滑桿可即時改變「感知價值」，顯示投入與回報的正相關 -> 直觀地展示變數間的關係 -> HTML/JS/Tailwind。
+        - 決策後失調 -> 變化展示 -> Chart.js 長條圖 -> 透過「選擇後」按鈕更新圖表，顯示對選項評價的變化 -> 動態展示決策前後的態度轉變 -> Chart.js/Canvas。
+        - 批判與發展 -> 資訊組織 -> 雙欄對比佈局 -> 清晰並列呈現理論的局限性與現代觀點，便於比較理解 -> HTML/Tailwind。
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+            color: #334155;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .tab-button.active {
+            border-color: #4f46e5;
+            background-color: #eef2ff;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        .content-panel {
+            display: none;
+        }
+        .content-panel.active {
+            display: block;
+        }
+        .interactive-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .interactive-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        .btn-primary:hover {
+            background-color: #4338ca;
+        }
+        .btn-secondary {
+            background-color: #e5e7eb;
+            color: #374151;
+            transition: background-color 0.3s;
+        }
+        .btn-secondary:hover {
+            background-color: #d1d5db;
+        }
+        .scroll-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+            transform: translateY(100%);
+        }
+        .scroll-to-top.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .fade-in-section {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
+        .fade-in-section.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body class="antialiased">
+<div class=\"text-sm opacity-60 p-2\">Generated: 2025-10-11</div>
+
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0">
+                    <h1 class="text-xl font-bold text-indigo-600">認知失調理論</h1>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4">
+                        <a href="#intro" class="text-gray-500 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">核心概念</a>
+                        <a href="#simulator" class="text-gray-500 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">互動模擬</a>
+                        <a href="#experiments" class="text-gray-500 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">經典實驗</a>
+                        <a href="#applications" class="text-gray-500 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">現實應用</a>
+                        <a href="#critique" class="text-gray-500 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium">批判與發展</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+
+        <section id="intro" class="text-center py-16 fade-in-section">
+            <h2 class="text-4xl md:text-5xl font-extrabold text-slate-800 mb-4">探索內心的矛盾</h2>
+            <p class="max-w-3xl mx-auto text-lg md:text-xl text-slate-600 mb-8">
+                由心理學家利昂·費斯廷格（Leon Festinger）於1957年提出，認知失調理論描述當一個人同時擁有兩種或多種相互矛盾的想法、信念或價值觀時，所體驗到的心理不適感。這個互動報告將帶您深入了解此理論的奧秘及其深遠影響。
+            </p>
+        </section>
+
+        <section id="core-concepts" class="mb-16 fade-in-section">
+             <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-slate-800">理論基石</h3>
+                <p class="mt-2 text-slate-600">認知失調的產生與緩解，建立在幾個核心原則之上。</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <div class="flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+                        <span class="text-2xl">🧠</span>
+                    </div>
+                    <h4 class="text-xl font-bold mb-2">矛盾產生壓力</h4>
+                    <p class="text-slate-600">當行為與信念不一致時（例如，一個注重健康的人卻抽菸），內心會產生一種緊張、不適的壓力，這就是「失調」。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <div class="flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+                        <span class="text-2xl">🏃</span>
+                    </div>
+                    <h4 class="text-xl font-bold mb-2">尋求和諧的動力</h4>
+                    <p class="text-slate-600">這種心理壓力會驅使我們採取行動，以減少或消除這種不一致，重新達到內心平衡與和諧的狀態。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <div class="flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+                        <span class="text-2xl">⚖️</span>
+                    </div>
+                    <h4 class="text-xl font-bold mb-2">失調的強度</h4>
+                    <p class="text-slate-600">失調的程度取決於矛盾想法的重要性以及它們之間的差異程度。越是重要、越是矛盾，內心的不適感就越強烈。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="simulator" class="py-16 bg-slate-50 rounded-lg fade-in-section">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-slate-800">認知失調模擬器</h3>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">
+                    體驗一下認知失調是如何在日常情境中發生，以及我們的大腦如何巧妙地化解這些內心矛盾。請先選擇一個情境，然後嘗試不同的策略來緩解由此產生的心理壓力。
+                </p>
+            </div>
+            <div class="max-w-4xl mx-auto">
+                <div class="mb-6">
+                    <p class="text-sm font-semibold text-slate-600 mb-2 text-center">1. 選擇一個情境：</p>
+                    <div id="scenario-buttons" class="flex flex-wrap gap-2 justify-center">
+                        <button data-scenario="smoking" class="px-4 py-2 rounded-md btn-secondary">健康與抽菸</button>
+                        <button data-scenario="diet" class="px-4 py-2 rounded-md btn-secondary">減肥與甜食</button>
+                        <button data-scenario="purchase" class="px-4 py-2 rounded-md btn-secondary">昂貴的購物</button>
+                        <button data-scenario="loyalty" class="px-4 py-2 rounded-md btn-secondary">友誼與誠信</button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md min-h-[350px] flex flex-col justify-between">
+                    <div>
+                        <p class="font-semibold text-slate-700 mb-2">當前心理不適感：</p>
+                        <div class="w-full bg-gray-200 rounded-full h-4 mb-4">
+                            <div id="discomfort-meter" class="bg-red-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                        <p class="font-semibold text-slate-700">心理狀態分析：</p>
+                        <div id="dissonance-state" class="mt-2 p-4 bg-gray-100 text-gray-700 rounded-md border border-gray-200 min-h-[80px]">
+                            請先選擇一個上方的情境。
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        <p class="text-sm font-semibold text-slate-600 mb-2 text-center">2. 選擇緩解策略：</p>
+                        <div id="strategy-buttons" class="flex flex-wrap gap-2 justify-center">
+                            <button data-strategy="change" class="px-4 py-2 rounded-md btn-secondary opacity-50" disabled>改變行為/信念</button>
+                            <button data-strategy="add" class="px-4 py-2 rounded-md btn-secondary opacity-50" disabled>增加新想法 (合理化)</button>
+                            <button data-strategy="trivialize" class="px-4 py-2 rounded-md btn-secondary opacity-50" disabled>降低重要性</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="experiments" class="py-16 fade-in-section">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-slate-800">三大經典實驗</h3>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">
+                    此理論的建立基於一系列巧妙的心理學實驗。這裡我們將探索其中最著名的三個，它們揭示了人類心理的有趣運作方式。您可以點擊下方的標籤來切換查看不同的實驗。
+                </p>
+            </div>
+            
+            <div class="max-w-5xl mx-auto">
+                <div class="border-b border-gray-200 mb-6">
+                    <nav id="exp-tabs" class="-mb-px flex space-x-2 md:space-x-4 justify-center" aria-label="Tabs">
+                        <button data-tab="induced-compliance" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            不足理由實驗 ($1 vs. $20)
+                        </button>
+                        <button data-tab="effort-justification" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            努力合理化
+                        </button>
+                        <button data-tab="post-decision" class="tab-button whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            決策後失調
+                        </button>
+                    </nav>
+                </div>
+
+                <div id="exp-content">
+                    <div id="induced-compliance-content" class="content-panel">
+                        <div class="grid md:grid-cols-2 gap-8 items-center">
+                            <div>
+                                <h4 class="text-2xl font-bold text-slate-800 mb-3">不足理由實驗 (Festinger & Carlsmith, 1959)</h4>
+                                <p class="text-slate-600 mb-4">參與者被要求做一件極其枯燥的任務，然後被要求對下一位參與者謊稱任務很有趣。一部分人為此謊言得到1美元，另一部分人得到20美元。</p>
+                                <p class="text-slate-600 font-semibold">結果發現，只得到1美元的人，事後更傾向於認為任務真的有趣。因為1美元這個外部理由太不充分，他們為了減輕「我對人說謊」的失調感，只好改變自己對任務的真實看法（內在歸因）。</p>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="complianceChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="effort-justification-content" class="content-panel">
+                        <div class="grid md:grid-cols-2 gap-8 items-center">
+                             <div>
+                                <h4 class="text-2xl font-bold text-slate-800 mb-3">努力合理化 (Aronson & Mills, 1959)</h4>
+                                <p class="text-slate-600 mb-4">人們對於自己投入大量努力（如時間、金錢、痛苦）才獲得的東西，會給予更高的評價，以使其努力顯得合理。在經典實驗中，經歷了嚴格甚至尷尬的「入會儀式」的女性，比那些輕鬆入會的人更喜歡她們所在的團體。</p>
+                                <p class="text-slate-600 font-semibold">如果我們費盡周折才加入一個社團，卻發現它不過爾爾，內心就會產生失調。為了緩解，我們會說服自己「這個社團其實很棒」，從而使自己的努力變得值得。</p>
+                                <div class="mt-6">
+                                    <label for="effort-slider" class="block mb-2 text-sm font-medium text-gray-900">拖動滑桿感受投入與價值的關係：</label>
+                                    <input id="effort-slider" type="range" min="10" max="100" value="50" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                                    <div class="flex justify-between text-sm text-gray-500 mt-2">
+                                        <span>低投入</span>
+                                        <span>高投入</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-center justify-center p-4">
+                                <div id="effort-visual" class="w-full max-w-xs flex items-end justify-around gap-4 h-64">
+                                     <div class="text-center">
+                                        <div class="w-16 bg-slate-300 rounded-t-lg" id="effort-bar" style="height: 50%;"></div>
+                                        <p class="mt-2 font-semibold">投入努力</p>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="w-16 bg-indigo-500 rounded-t-lg transition-all duration-300" id="value-bar" style="height: 50%;"></div>
+                                        <p class="mt-2 font-semibold">感知價值</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="post-decision-content" class="content-panel">
+                        <div class="grid md:grid-cols-2 gap-8 items-center">
+                            <div>
+                                <h4 class="text-2xl font-bold text-slate-800 mb-3">決策後失調 (Brehm, 1956)</h4>
+                                <p class="text-slate-600 mb-4">當我們在兩個都很有吸引力的選項中做出選擇後，往往會感到不安，擔心自己選錯。在Brehm的實驗中，女性對家用電器進行評分，然後被允許帶走兩個評分相近的電器之一。事後，她們再次評分時，對所選電器的評價顯著提高，對放棄的則降低。</p>
+                                <p class="text-slate-600 font-semibold">為了緩解這種不安，我們會不自覺地提高對所選選項的評價，同時貶低放棄的選項，以說服自己「我的選擇是正確的」。點擊按鈕，觀察選擇後的態度變化。</p>
+                                <button id="make-decision-btn" class="mt-4 px-6 py-2 rounded-md btn-primary">選擇 A 商品</button>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="decisionChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="applications" class="py-16 fade-in-section">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-slate-800">生活中的認知失調</h3>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">
+                    認知失調理論不僅僅是學術概念，它深刻地影響著我們的日常生活、消費行為，甚至是社會現象。
+                </p>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <h4 class="text-xl font-bold mb-2">市場行銷</h4>
+                    <p class="text-slate-600">品牌會鼓勵消費者做出小承諾（如試用），一旦做出承諾，消費者為了保持行為一致性會更傾向於購買。售後服務也是為了減少消費者「買錯了」的決策後失調。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <h4 class="text-xl font-bold mb-2">健康與治療</h4>
+                    <p class="text-slate-600">在心理治療中，讓個案公開承諾改變（如戒菸），會利用其不想言行不一的心理來增強改變的動力。當他們偶爾違背承諾時，產生的失調感反而會成為堅持下去的警鐘。</p>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <h4 class="text-xl font-bold mb-2">政治與信念</h4>
+                    <p class="text-slate-600">選民在投票給某位候選人後，會更傾向於關注其正面新聞，並忽視負面資訊，以合理化自己的投票選擇。這種「確認偏誤」是減少決策後失調的一種方式。</p>
+                </div>
+                 <div class="bg-white p-6 rounded-lg shadow-md interactive-card">
+                    <h4 class="text-xl font-bold mb-2">社會認同</h4>
+                    <p class="text-slate-600">為了減少與所屬群體歸屬感之間的矛盾，人們可能會調整自己的觀點以符合群體規範，這也是群體極化現象的心理基礎之一。</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="critique" class="py-16 bg-slate-50 rounded-lg fade-in-section">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-slate-800">批判與後續發展</h3>
+                <p class="mt-2 max-w-2xl mx-auto text-slate-600">
+                    雖然認知失調理論影響深遠，但它也面臨一些批判，並激發了後續理論的發展，對其進行了補充和修正。
+                </p>
+            </div>
+            <div class="max-w-4xl mx-auto grid md:grid-cols-2 gap-8">
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h4 class="text-xl font-bold mb-3 text-red-600">理論的局限性</h4>
+                    <ul class="space-y-3 text-slate-600 list-disc list-inside">
+                        <li><strong>預測力問題：</strong> 理論能很好地「解釋」已發生的事，但較難精確「預測」一個人將採取哪種具體策略來緩解失調。</li>
+                        <li><strong>個體差異：</strong> 並非所有人都對失調同樣敏感。有些人對內心矛盾的容忍度更高，不一定會產生強烈的改變動機。</li>
+                        <li><strong>文化差異：</strong> 理論在強調個人主義的西方文化中得到廣泛驗證，但在集體主義文化中，可能「維持群體和諧」比「維持內心一致」更重要。</li>
+                    </ul>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h4 class="text-xl font-bold mb-3 text-green-600">現代發展</h4>
+                    <ul class="space-y-3 text-slate-600 list-disc list-inside">
+                        <li><strong>自我一致性理論 (Aronson)：</strong> 認為失調的根源並非單純的邏輯矛盾，而是當行為威脅到個人正面、穩定、道德的「自我概念」時才會產生。</li>
+                        <li><strong>自我肯定理論 (Steele)：</strong> 主張人們有維持整體自我價值的根本動機。當一個領域的自我價值受到威脅時，可以透過肯定另一不相關領域的價值來「補償」，從而緩解失調感。</li>
+                         <li><strong>新認知失調模型：</strong> 整合了多種觀點，認為失調是一個多階段過程，從覺察到矛盾、產生不適、到選擇最省力的解決方案。</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-white border-t">
+        <div class="container mx-auto py-6 px-4 sm:px-6 lg:px-8 text-center text-slate-500">
+            <p>&copy; 2025 互動式研究報告。基於利昂·費斯廷格的認知失調理論及其後續研究。</p>
+        </div>
+    </footer>
+    
+    <button id="scrollToTopBtn" class="scroll-to-top p-3 rounded-full btn-primary shadow-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+        </svg>
+    </button>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- Navigation & Scroll-to-Top ---
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    document.querySelector(this.getAttribute('href')).scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                });
+            });
+
+            const scrollToTopBtn = document.getElementById('scrollToTopBtn');
+            window.addEventListener('scroll', () => {
+                if (window.pageYOffset > 300) {
+                    scrollToTopBtn.classList.add('visible');
+                } else {
+                    scrollToTopBtn.classList.remove('visible');
+                }
+            });
+            scrollToTopBtn.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+
+            // --- Fade-in on Scroll ---
+            const sections = document.querySelectorAll('.fade-in-section');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    }
+                });
+            }, { threshold: 0.1 });
+            sections.forEach(section => observer.observe(section));
+
+
+            // --- Simulator Logic ---
+            const scenarios = {
+                smoking: {
+                    dissonance: "【信念】我注重健康 ↔ 【行為】我每天抽菸。這種矛盾讓我感到不安。",
+                    resolutions: {
+                        change: "【改變行為】我決定戒菸，讓行為與信念一致。這很難，但能徹底解決矛盾。",
+                        add: "【增加想法】抽菸能幫我舒緩壓力，這對心理健康很重要。用一個新的協調想法來平衡矛盾。",
+                        trivialize: "【降低重要性】人生苦短，及時行樂。偶爾抽根菸的風險沒那麼大。透過貶低矛盾的重要性來化解它。"
+                    }
+                },
+                diet: {
+                    dissonance: "【信念】我正在努力減肥 ↔ 【行為】我剛吃了高熱量蛋糕。我感到內疚和挫敗。",
+                    resolutions: {
+                        change: "【改變信念/後續行為】好吧，今天不算減肥日，明天我會加倍運動補回來。",
+                        add: "【增加想法】這只是偶爾一次的放縱，有助於我長期堅持下去，避免壓力爆發。",
+                        trivialize: "【降低重要性】一塊蛋糕而已，不會對我的減肥大計產生實質影響。"
+                    }
+                },
+                purchase: {
+                    dissonance: "【信念】我應該要節儉 ↔ 【行為】我剛買了昂貴的名牌包。我有點後悔。",
+                    resolutions: {
+                        change: "【改變信念】我改變了看法，認為『一分錢一分貨』，好的投資是值得的。",
+                        add: "【增加想法】這個包是獎勵自己辛勤工作，能激勵我未來更努力賺錢。",
+                        trivialize: "【降低重要性】錢再賺就有，但擁有心頭好的快樂是無價的。"
+                    }
+                },
+                loyalty: {
+                    dissonance: "【信念】我應該對朋友忠誠 ↔ 【信念】我反對作弊。我知道朋友考試作弊了。",
+                    resolutions: {
+                        change: "【改變行為】我決定找朋友談談，勸他去自首。誠信比隱瞞更重要。",
+                        add: "【增加想法】這次考試對他太重要了，壓力太大才出此下策，我應該理解他。",
+                        trivialize: "【降低重要性】這只是一次小考試，沒必要小題大作，友情更重要。"
+                    }
+                }
+            };
+            const scenarioButtons = document.getElementById('scenario-buttons');
+            const strategyButtons = document.getElementById('strategy-buttons');
+            const dissonanceStateEl = document.getElementById('dissonance-state');
+            const discomfortMeter = document.getElementById('discomfort-meter');
+            let currentScenario = null;
+
+            scenarioButtons.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON') {
+                    currentScenario = e.target.dataset.scenario;
+                    Array.from(scenarioButtons.children).forEach(btn => btn.classList.replace('btn-primary', 'btn-secondary'));
+                    e.target.classList.replace('btn-secondary', 'btn-primary');
+                    
+                    dissonanceStateEl.textContent = scenarios[currentScenario].dissonance;
+                    dissonanceStateEl.className = 'mt-2 p-4 bg-red-50 text-red-700 rounded-md border border-red-200 min-h-[80px]';
+                    discomfortMeter.style.width = '90%';
+                    discomfortMeter.classList.replace('bg-green-500', 'bg-red-500');
+                    
+                    Array.from(strategyButtons.children).forEach(btn => {
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-50');
+                    });
+                }
+            });
+
+            strategyButtons.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON' && currentScenario) {
+                    const strategy = e.target.dataset.strategy;
+                    dissonanceStateEl.textContent = scenarios[currentScenario].resolutions[strategy];
+                    dissonanceStateEl.className = 'mt-2 p-4 bg-green-50 text-green-700 rounded-md border border-green-200 min-h-[80px]';
+                    discomfortMeter.style.width = '10%';
+                    discomfortMeter.classList.replace('bg-red-500', 'bg-green-500');
+                }
+            });
+
+            // --- Experiments Tab Logic ---
+            const tabs = document.querySelectorAll('.tab-button');
+            const panels = document.querySelectorAll('.content-panel');
+
+            const activateTab = (tab) => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                const targetPanel = document.getElementById(tab.dataset.tab + '-content');
+                panels.forEach(p => p.classList.remove('active'));
+                targetPanel.classList.add('active');
+            }
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => activateTab(tab));
+            });
+            activateTab(tabs[0]);
+
+
+            // --- Chart.js Instances ---
+            let complianceChart, decisionChart;
+
+            const complianceChartCtx = document.getElementById('complianceChart').getContext('2d');
+            complianceChart = new Chart(complianceChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['控制組 (無謊言)', '得到 $20 (理由充足)', '得到 $1 (理由不足)'],
+                    datasets: [{
+                        label: '對任務的喜愛程度評分',
+                        data: [-0.45, -0.05, 1.35],
+                        backgroundColor: [
+                            'rgba(156, 163, 175, 0.6)',
+                            'rgba(99, 102, 241, 0.6)',
+                            'rgba(239, 68, 68, 0.6)',
+                        ],
+                        borderColor: [
+                            'rgba(156, 163, 175, 1)',
+                            'rgba(99, 102, 241, 1)',
+                            'rgba(239, 68, 68, 1)',
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: '喜愛程度' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: '謊言報酬與態度轉變關係圖' }
+                    }
+                }
+            });
+
+            const effortSlider = document.getElementById('effort-slider');
+            const effortBar = document.getElementById('effort-bar');
+            const valueBar = document.getElementById('value-bar');
+
+            effortSlider.addEventListener('input', (e) => {
+                const effortValue = e.target.value;
+                effortBar.style.height = `${effortValue}%`;
+                valueBar.style.height = `${effortValue}%`;
+            });
+            
+            const decisionChartCtx = document.getElementById('decisionChart').getContext('2d');
+            const initialDecisionData = {
+                labels: ['商品 A 評價', '商品 B 評價'],
+                datasets: [{
+                    label: '決策前',
+                    data: [7.5, 7.3],
+                    backgroundColor: 'rgba(156, 163, 175, 0.6)',
+                    borderColor: 'rgba(156, 163, 175, 1)',
+                    borderWidth: 1
+                }]
+            };
+
+            decisionChart = new Chart(decisionChartCtx, {
+                type: 'bar',
+                data: JSON.parse(JSON.stringify(initialDecisionData)), // Deep copy
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { beginAtZero: true, max: 10, title: { display: true, text: '喜好度評分 (1-10)' } }
+                    },
+                    plugins: { title: { display: true, text: '決策前後對商品評價的變化' } }
+                }
+            });
+            
+            document.getElementById('make-decision-btn').addEventListener('click', () => {
+                const isDecisionMade = decisionChart.data.datasets.length > 1;
+
+                if (isDecisionMade) {
+                    decisionChart.data = JSON.parse(JSON.stringify(initialDecisionData));
+                } else {
+                    decisionChart.data.datasets.push({
+                        label: '決策後',
+                        data: [8.8, 6.5],
+                        backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                        borderColor: 'rgba(79, 70, 229, 1)',
+                        borderWidth: 1
+                    });
+                }
+                decisionChart.update();
+            });
+        });
+    </script>
+</body>
+</html>
